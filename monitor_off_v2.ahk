@@ -3,7 +3,7 @@
 #UseHook  ; Force keyboard hook to prevent other applications from hijacking hotkeys
 
 ; Force the script to run as Administrator.
-; This is critical to capture keyboard shortcuts (like F23/F24) when Remote Desktop or AVD is active.
+; This is critical to capture keyboard shortcuts (like Ctrl+Shift+M/F24) when Remote Desktop or AVD is active.
 if not A_IsAdmin
 {
     try {
@@ -39,15 +39,11 @@ F24::
 }
 
 ; --- 3. MICROPHONE TOGGLE HOTKEY ---
-; Press F23 to toggle mic status visually and send Ctrl+Shift+M to VDI
-F23::
+; Passively listen to Ctrl+Shift+M (sent by iCUE or keyboard) to toggle visual state, while letting the key pass through to VDI/Teams
+~^+m::
 {
     global isMuted
     isMuted := !isMuted
-    
-    ; Send Ctrl+Shift+M to active VDI session
-    Send("^+m")
-    
     UpdateMicState()
 }
 
