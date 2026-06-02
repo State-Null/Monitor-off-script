@@ -27,65 +27,23 @@ F24::
 ; Press F23 to toggle default microphone mute
 F23::
 {
-    toggledAny := false
-    
-    ; Loop through all potential audio devices to find your mic and toggle it
-    Loop 32 {
-        try {
-            SoundSetMute(-1, "Microphone", A_Index)
-            toggledAny := true
-        }
+    currentMute := GetDefaultMicMute()
+    if (currentMute != -1) {
+        SetDefaultMicMute(currentMute ? 0 : 1)
     }
-    
-    ; Fallback if no specific index was toggled
-    if (!toggledAny) {
-        try {
-            SoundSetMute(-1, , "Microphone")
-        } catch {
-            try {
-                SoundSetMute(-1)
-            } catch {
-                ; do nothing
-            }
-        }
-    }
-    
     UpdateMicState()
 }
 
 ; --- FUNCTIONS ---
 UpdateMicState() {
-    isMuted := false
-    foundMic := false
-    
-    ; Search for your active microphone device to read its current state
-    Loop 32 {
-        try {
-            isMuted := SoundGetMute("Microphone", A_Index)
-            foundMic := true
-            break
-        }
-    }
-    
-    ; Fallback to default recording device if name loop fails
-    if (!foundMic) {
-        try {
-            isMuted := SoundGetMute(, "Microphone")
-        } catch {
-            try {
-                isMuted := SoundGetMute()
-            } catch {
-                isMuted := false
-            }
-        }
-    }
+    isMuted := GetDefaultMicMute()
     
     ; Find the top-right corner of your primary screen
     MonitorGetWorkArea(, &MonLeft, &MonTop, &MonRight, &MonBottom)
     xPos := MonRight - 140
     yPos := MonTop + 10
     
-    if (isMuted) {
+    if (isMuted = 1) {
         ; --- MIC IS OFF (MUTED) ---
         ; 1. Update Tray Icon to Red X Circle
         TraySetIcon("shell32.dll", 132)
@@ -124,4 +82,58 @@ UpdateMicState() {
 
 HideOSD() {
     Gui_Mic.Hide()
+}
+
+; --- CORE AUDIO COM FUNCTIONS ---
+GetDefaultMicMute() {
+    deviceEnumerator := ComObject("{BCDE0395-E52F-467C-8E3D-C4579291692E}", "{A95664D2-9614-4F35-A746-DE8DB63617E6}")
+    if (!deviceEnumerator)
+        return -1
+        
+    defaultDevice := 0
+    DllCall(NumGet(NumGet(deviceEnumerator.ptr, "UPtr") + 4 * A_PtrSize, "UPtr"), "UPtr", deviceEnumerator.ptr, "Int", 1, "Int", 0, "UPtr*", &defaultDevice)
+    
+    if (!defaultDevice)
+        return -1
+        
+    iid := Buffer(16)
+    DllCall("ole32\CLSIDFromString", "WStr", "{5CDF2C82-841E-4546-9722-0CF74078229A}", "UPtr", iid.ptr)
+    endpointVolume := 0
+    DllCall(NumGet(NumGet(defaultDevice, "UPtr") + 3 * A_PtrSize, "UPtr"), "UPtr", defaultDevice, "UPtr", iid.ptr, "UInt", 23, "UPtr", 0, "UPtr*", &endpointVolume)
+    ObjRelease(defaultDevice)
+    
+    if (!endpointVolume)
+        return -1
+        
+    isMuted := 0
+    DllCall(NumGet(NumGet(endpointVolume, "UPtr") + 15 * A_PtrSize, "UPtr"), "UPtr", endpointVolume, "Int*", &isMuted)
+    ObjRelease(endpointVolume)
+    
+    return isMuted
+}
+
+SetDefaultMicMute(muteState) {
+    deviceEnumerator := ComObject("{BCDE0395-E52F-467C-8E3D-C4579291692E}", "{A95664D2-9614-4F35-A746-DE8DB63617E6}")
+    if (!deviceEnumerator)
+        return false
+        
+    defaultDevice := 0
+    DllCall(NumGet(NumGet(deviceEnumerator.ptr, "UPtr") + 4 * A_PtrSize, "UPtr"), "UPtr", deviceEnumerator.ptr, "Int", 1, "Int", 0, "UPtr*", &defaultDevice)
+    
+    if (!defaultDevice)
+        return false
+        
+    iid := Buffer(16)
+    DllCall("ole32\CLSIDFromString", "WStr", "{5CDF2C82-841E-4546-9722-0CF74078229A}", "UPtr", iid.ptr)
+    endpointVolume := 0
+    DllCall(NumGet(NumGet(defaultDevice, "UPtr") + 3 * A_PtrSize, "UPtr"), "UPtr", defaultDevice, "UPtr", iid.ptr, "UInt", 23, "UPtr", 0, "UPtr*", &endpointVolume)
+    ObjRelease(defaultDevice)
+    
+    if (!endpointVolume)
+        return false
+        
+    DllCall(NumGet(NumGet(endpointVolume, "UPtr") + 14 * A_PtrSize, "UPtr"), "UPtr", endpointVolume, "Int", muteState, "UPtr", 0)
+    ObjRelease(endpointVolume)
+    
+    return true
 }

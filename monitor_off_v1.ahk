@@ -27,52 +27,24 @@ return
 ; --- 3. MICROPHONE TOGGLE HOTKEY ---
 ; Press F23 to toggle default microphone mute
 F23::
-    toggledAny := false
-    
-    ; Loop through all potential audio devices to find your mic and toggle it
-    Loop, 32 {
-        SoundGet, tempMute, Microphone, Mute, %A_Index%
-        if (ErrorLevel = 0) {
-            ; Toggle it
-            SoundSet, +1, Microphone, Mute, %A_Index%
-            toggledAny := true
-        }
+    currentMute := GetDefaultMicMute()
+    if (currentMute != -1) {
+        ; Toggle it
+        SetDefaultMicMute(!currentMute)
     }
-    
-    ; Fallback: If no dedicated "Microphone" component was found, toggle master input
-    if (!toggledAny) {
-        SoundSet, +1, Master, Mute, 1
-    }
-    
     GoSub, UpdateMicState
 return
 
 ; --- SUBROUTINES ---
 UpdateMicState:
-    isMuted := "Off"
-    foundMic := false
-    
-    ; Search for your active microphone device to read its current state
-    Loop, 32 {
-        SoundGet, tempMute, Microphone, Mute, %A_Index%
-        if (ErrorLevel = 0) {
-            isMuted := tempMute
-            foundMic := true
-            break
-        }
-    }
-    
-    ; Fallback if no Microphone component was found
-    if (!foundMic) {
-        SoundGet, isMuted, Master, Mute, 1
-    }
+    isMutedVal := GetDefaultMicMute()
     
     ; Find the top-right corner of your primary screen
     SysGet, Mon, MonitorWorkArea
     xPos := MonRight - 140
     yPos := MonTop + 10
     
-    if (isMuted = "On") {
+    if (isMutedVal = 1) {
         ; --- MIC IS OFF (MUTED) ---
         ; 1. Update Tray Icon to Red X Circle
         Menu, Tray, Icon, shell32.dll, 132
@@ -114,3 +86,68 @@ return
 HideOSD:
     Gui, MicOSD:Hide
 return
+
+; --- CORE AUDIO COM FUNCTIONS ---
+GetDefaultMicMute() {
+    ; CLSID_MMDeviceEnumerator: {BCDE0395-E52F-467C-8E3D-C4579291692E}
+    ; IID_IMMDeviceEnumerator: {A95664D2-9614-4F35-A746-DE8DB63617E6}
+    ; IID_IAudioEndpointVolume: {5CDF2C82-841E-4546-9722-0CF74078229A}
+    
+    deviceEnumerator := ComObjCreate("{BCDE0395-E52F-467C-8E3D-C4579291692E}", "{A95664D2-9614-4F35-A746-DE8DB63617E6}")
+    if (!deviceEnumerator)
+        return -1
+    
+    ; GetDefaultAudioEndpoint: DataFlow = 1 (Capture), Role = 0 (Console)
+    DllCall(NumGet(NumGet(deviceEnumerator+0)+4*A_PtrSize), "UPtr", deviceEnumerator, "Int", 1, "Int", 0, "UPtr*", defaultDevice)
+    ObjRelease(deviceEnumerator)
+    
+    if (!defaultDevice)
+        return -1
+        
+    ; Activate defaultDevice to get IAudioEndpointVolume
+    VarSetCapacity(iid, 16)
+    DllCall("ole32\CLSIDFromString", "WStr", "{5CDF2C82-841E-4546-9722-0CF74078229A}", "UPtr", &iid)
+    DllCall(NumGet(NumGet(defaultDevice+0)+3*A_PtrSize), "UPtr", defaultDevice, "UPtr", &iid, "UInt", 23, "UPtr", 0, "UPtr*", endpointVolume)
+    ObjRelease(defaultDevice)
+    
+    if (!endpointVolume)
+        return -1
+        
+    ; GetMute (Vtable index 15)
+    DllCall(NumGet(NumGet(endpointVolume+0)+15*A_PtrSize), "UPtr", endpointVolume, "Int*", isMuted)
+    ObjRelease(endpointVolume)
+    
+    return isMuted
+}
+
+SetDefaultMicMute(muteState) {
+    ; CLSID_MMDeviceEnumerator: {BCDE0395-E52F-467C-8E3D-C4579291692E}
+    ; IID_IMMDeviceEnumerator: {A95664D2-9614-4F35-A746-DE8DB63617E6}
+    ; IID_IAudioEndpointVolume: {5CDF2C82-841E-4546-9722-0CF74078229A}
+    
+    deviceEnumerator := ComObjCreate("{BCDE0395-E52F-467C-8E3D-C4579291692E}", "{A95664D2-9614-4F35-A746-DE8DB63617E6}")
+    if (!deviceEnumerator)
+        return false
+    
+    ; GetDefaultAudioEndpoint: DataFlow = 1 (Capture), Role = 0 (Console)
+    DllCall(NumGet(NumGet(deviceEnumerator+0)+4*A_PtrSize), "UPtr", deviceEnumerator, "Int", 1, "Int", 0, "UPtr*", defaultDevice)
+    ObjRelease(deviceEnumerator)
+    
+    if (!defaultDevice)
+        return false
+        
+    ; Activate defaultDevice to get IAudioEndpointVolume
+    VarSetCapacity(iid, 16)
+    DllCall("ole32\CLSIDFromString", "WStr", "{5CDF2C82-841E-4546-9722-0CF74078229A}", "UPtr", &iid)
+    DllCall(NumGet(NumGet(defaultDevice+0)+3*A_PtrSize), "UPtr", defaultDevice, "UPtr", &iid, "UInt", 23, "UPtr", 0, "UPtr*", endpointVolume)
+    ObjRelease(defaultDevice)
+    
+    if (!endpointVolume)
+        return false
+        
+    ; SetMute (Vtable index 14)
+    DllCall(NumGet(NumGet(endpointVolume+0)+14*A_PtrSize), "UPtr", endpointVolume, "Int", muteState, "UPtr", 0)
+    ObjRelease(endpointVolume)
+    
+    return true
+}
