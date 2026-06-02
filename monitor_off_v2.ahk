@@ -53,18 +53,6 @@ F23::
     UpdateMicState()
 }
 
-; --- 4. TOGGLE ON-SCREEN DISPLAY (OSD) HOTKEY ---
-; Press Shift+F23 to toggle the visual overlay on/off
-+F23::
-{
-    global showOSD := !showOSD
-    if (!showOSD) {
-        Gui_Mic.Hide()
-    } else {
-        UpdateMicState()
-    }
-}
-
 ; --- FUNCTIONS ---
 UpdateMicState() {
     isMuted := false
