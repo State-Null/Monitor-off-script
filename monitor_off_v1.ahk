@@ -3,6 +3,9 @@
 SendMode Input
 SetWorkingDir %A_ScriptDir%
 
+; --- CONFIGURATION ---
+showOSD := true  ; Set to true to show the on-screen overlay, false to hide it
+
 ; --- 1. INITIALIZE THE MIC OVERLAY GUI ---
 Gui, MicOSD:New, +AlwaysOnTop -Caption +ToolWindow +LastFound +E0x20
 Gui, Color, 1A1A1A  ; Dark grey background
@@ -44,6 +47,17 @@ F23::
     GoSub, UpdateMicState
 return
 
+; --- 4. TOGGLE ON-SCREEN DISPLAY (OSD) HOTKEY ---
+; Press Shift+F23 to toggle the visual overlay on/off
++F23::
+    showOSD := !showOSD
+    if (!showOSD) {
+        Gui, MicOSD:Hide
+    } else {
+        GoSub, UpdateMicState
+    }
+return
+
 ; --- SUBROUTINES ---
 UpdateMicState:
     isMuted := "Off"
@@ -80,8 +94,12 @@ UpdateMicState:
         GuiControl, MicOSD:Font, OSDText
         GuiControl, MicOSD:, OSDText, MIC OFF
         
-        ; 3. Show overlay persistently
-        Gui, MicOSD:Show, x%xPos% y%yPos% w120 h30 NoActivate
+        ; 3. Show overlay persistently (if enabled)
+        if (showOSD) {
+            Gui, MicOSD:Show, x%xPos% y%yPos% w120 h30 NoActivate
+        } else {
+            Gui, MicOSD:Hide
+        }
         SetTimer, HideOSD, Off
     } else {
         ; --- MIC IS LIVE (ACTIVE) ---
@@ -94,9 +112,13 @@ UpdateMicState:
         GuiControl, MicOSD:Font, OSDText
         GuiControl, MicOSD:, OSDText, MIC LIVE
         
-        ; 3. Show overlay and start timer to hide it
-        Gui, MicOSD:Show, x%xPos% y%yPos% w120 h30 NoActivate
-        SetTimer, HideOSD, -1000 ; Hide after 1 second
+        ; 3. Show overlay and start timer to hide it (if enabled)
+        if (showOSD) {
+            Gui, MicOSD:Show, x%xPos% y%yPos% w120 h30 NoActivate
+            SetTimer, HideOSD, -1000 ; Hide after 1 second
+        } else {
+            Gui, MicOSD:Hide
+        }
     }
 return
 

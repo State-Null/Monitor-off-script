@@ -1,6 +1,9 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
+; --- CONFIGURATION ---
+global showOSD := true  ; Set to true to show the on-screen overlay, false to hide it
+
 ; --- 1. INITIALIZE THE MIC OVERLAY GUI ---
 Gui_Mic := Gui("+AlwaysOnTop -Caption +ToolWindow +LastFound +E0x20")
 Gui_Mic.Color := "1A1A1A"  ; Dark grey background
@@ -50,6 +53,18 @@ F23::
     UpdateMicState()
 }
 
+; --- 4. TOGGLE ON-SCREEN DISPLAY (OSD) HOTKEY ---
+; Press Shift+F23 to toggle the visual overlay on/off
++F23::
+{
+    global showOSD := !showOSD
+    if (!showOSD) {
+        Gui_Mic.Hide()
+    } else {
+        UpdateMicState()
+    }
+}
+
 ; --- FUNCTIONS ---
 UpdateMicState() {
     isMuted := false
@@ -92,8 +107,12 @@ UpdateMicState() {
         OSDText.SetFont("cFF5555")
         OSDText.Value := "MIC OFF"
         
-        ; 3. Show overlay persistently
-        Gui_Mic.Show("x" xPos " y" yPos " w120 h30 NoActivate")
+        ; 3. Show overlay persistently (if enabled)
+        if (showOSD) {
+            Gui_Mic.Show("x" xPos " y" yPos " w120 h30 NoActivate")
+        } else {
+            Gui_Mic.Hide()
+        }
         SetTimer(HideOSD, 0) ; Disable hide timer
     } else {
         ; --- MIC IS LIVE (ACTIVE) ---
@@ -105,9 +124,13 @@ UpdateMicState() {
         OSDText.SetFont("c55FF55")
         OSDText.Value := "MIC LIVE"
         
-        ; 3. Show overlay and start timer to hide it
-        Gui_Mic.Show("x" xPos " y" yPos " w120 h30 NoActivate")
-        SetTimer(HideOSD, -1000) ; Hide after 1 second
+        ; 3. Show overlay and start timer to hide it (if enabled)
+        if (showOSD) {
+            Gui_Mic.Show("x" xPos " y" yPos " w120 h30 NoActivate")
+            SetTimer(HideOSD, -1000) ; Hide after 1 second
+        } else {
+            Gui_Mic.Hide()
+        }
     }
 }
 
