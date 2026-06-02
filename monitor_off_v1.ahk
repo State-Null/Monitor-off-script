@@ -1,7 +1,21 @@
 #NoEnv
 #SingleInstance Force
+#UseHook  ; Force keyboard hook to prevent other applications from hijacking hotkeys
 SendMode Input
 SetWorkingDir %A_ScriptDir%
+
+; Force the script to run as Administrator.
+; This is critical to capture keyboard shortcuts (like F23/F24) when Remote Desktop or AVD is active.
+if not A_IsAdmin
+{
+    try {
+        if A_IsCompiled
+            Run *RunAs "%A_ScriptFullPath%"
+        else
+            Run *RunAs "%A_ScriptFullPath%"
+    }
+    ExitApp
+}
 
 ; --- CONFIGURATION ---
 showOSD := true  ; Set to true to show the on-screen overlay, false to hide it
@@ -97,8 +111,12 @@ GetDefaultMicMute() {
     if (!deviceEnumerator)
         return -1
     
-    ; GetDefaultAudioEndpoint: DataFlow = 1 (Capture), Role = 0 (Console)
-    DllCall(NumGet(NumGet(deviceEnumerator+0)+4*A_PtrSize), "UPtr", deviceEnumerator, "Int", 1, "Int", 0, "UPtr*", defaultDevice)
+    ; Try eCommunications (2) first, fall back to eConsole (0)
+    defaultDevice := 0
+    hr := DllCall(NumGet(NumGet(deviceEnumerator+0)+4*A_PtrSize), "UPtr", deviceEnumerator, "Int", 1, "Int", 2, "UPtr*", defaultDevice)
+    if (hr != 0 || !defaultDevice) {
+        hr := DllCall(NumGet(NumGet(deviceEnumerator+0)+4*A_PtrSize), "UPtr", deviceEnumerator, "Int", 1, "Int", 0, "UPtr*", defaultDevice)
+    }
     ObjRelease(deviceEnumerator)
     
     if (!defaultDevice)
@@ -107,6 +125,7 @@ GetDefaultMicMute() {
     ; Activate defaultDevice to get IAudioEndpointVolume
     VarSetCapacity(iid, 16)
     DllCall("ole32\CLSIDFromString", "WStr", "{5CDF2C82-841E-4546-9722-0CF74078229A}", "UPtr", &iid)
+    endpointVolume := 0
     DllCall(NumGet(NumGet(defaultDevice+0)+3*A_PtrSize), "UPtr", defaultDevice, "UPtr", &iid, "UInt", 23, "UPtr", 0, "UPtr*", endpointVolume)
     ObjRelease(defaultDevice)
     
@@ -114,6 +133,7 @@ GetDefaultMicMute() {
         return -1
         
     ; GetMute (Vtable index 15)
+    isMuted := 0
     DllCall(NumGet(NumGet(endpointVolume+0)+15*A_PtrSize), "UPtr", endpointVolume, "Int*", isMuted)
     ObjRelease(endpointVolume)
     
@@ -129,25 +149,27 @@ SetDefaultMicMute(muteState) {
     if (!deviceEnumerator)
         return false
     
-    ; GetDefaultAudioEndpoint: DataFlow = 1 (Capture), Role = 0 (Console)
-    DllCall(NumGet(NumGet(deviceEnumerator+0)+4*A_PtrSize), "UPtr", deviceEnumerator, "Int", 1, "Int", 0, "UPtr*", defaultDevice)
-    ObjRelease(deviceEnumerator)
-    
-    if (!defaultDevice)
-        return false
-        
-    ; Activate defaultDevice to get IAudioEndpointVolume
+    success := false
     VarSetCapacity(iid, 16)
     DllCall("ole32\CLSIDFromString", "WStr", "{5CDF2C82-841E-4546-9722-0CF74078229A}", "UPtr", &iid)
-    DllCall(NumGet(NumGet(defaultDevice+0)+3*A_PtrSize), "UPtr", defaultDevice, "UPtr", &iid, "UInt", 23, "UPtr", 0, "UPtr*", endpointVolume)
-    ObjRelease(defaultDevice)
     
-    if (!endpointVolume)
-        return false
-        
-    ; SetMute (Vtable index 14)
-    DllCall(NumGet(NumGet(endpointVolume+0)+14*A_PtrSize), "UPtr", endpointVolume, "Int", muteState, "UPtr", 0)
-    ObjRelease(endpointVolume)
+    ; Loop roles: 0 (Console), 2 (Communications)
+    for each, role in [0, 2] {
+        defaultDevice := 0
+        hr := DllCall(NumGet(NumGet(deviceEnumerator+0)+4*A_PtrSize), "UPtr", deviceEnumerator, "Int", 1, "Int", role, "UPtr*", defaultDevice)
+        if (hr == 0 && defaultDevice) {
+            endpointVolume := 0
+            DllCall(NumGet(NumGet(defaultDevice+0)+3*A_PtrSize), "UPtr", defaultDevice, "UPtr", &iid, "UInt", 23, "UPtr", 0, "UPtr*", endpointVolume)
+            ObjRelease(defaultDevice)
+            
+            if (endpointVolume) {
+                DllCall(NumGet(NumGet(endpointVolume+0)+14*A_PtrSize), "UPtr", endpointVolume, "Int", muteState, "UPtr", 0)
+                ObjRelease(endpointVolume)
+                success := true
+            }
+        }
+    }
+    ObjRelease(deviceEnumerator)
     
-    return true
+    return success
 }
