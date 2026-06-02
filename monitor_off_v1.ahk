@@ -12,7 +12,7 @@ if not A_IsAdmin
         if A_IsCompiled
             Run *RunAs "%A_ScriptFullPath%"
         else
-            Run *RunAs "%A_ScriptFullPath%"
+            Run *RunAs "%A_AhkPath%" "%A_ScriptFullPath%"
     }
     ExitApp
 }
